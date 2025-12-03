@@ -108,16 +108,26 @@ export const useAnonymousChat = () => {
     if (status !== 'WAITING' || !userId) return;
 
     const handleMatch = (snapshot) => {
-      if (!snapshot.empty) {
-        const docData = snapshot.docs[0].data();
-        const convId = snapshot.docs[0].id;
-        const partner = docData.userAId === userId ? docData.userBId : docData.userAId;
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const convId = doc.id;
         
-        console.log("Match detected via Listener!");
+        const isUserA = data.userAId === userId;
 
+        // 1. Check if I already left this specific conversation
+        if (isUserA && data.userHasLeftA) continue;
+        if (!isUserA && data.userHasLeftB) continue;
+
+        // 2. Valid match found!
+        const partner = isUserA ? data.userBId : data.userAId;
+
+        console.log("Valid match found:", convId);
         setConversationId(convId);
         setPartnerId(partner);
         setStatus('CHATTING');
+
+        // 3. STOP looking. We found our match.
+        return; 
       }
     };
 
@@ -143,12 +153,18 @@ export const useAnonymousChat = () => {
       let validPartnerDoc = null;
       for (const candidate of snapshot.docs) {
         const data = candidate.data();
+        
+        // 1. Skip myself
         if (data.userId === userId) continue;
+
+        // 2. Check for Stale Users (Ghosts)
         if (Date.now() - (data.lastSeen?.toMillis() || 0) > 15000) {
-          deleteDoc(candidate.ref).catch(() => {}); // Cleanup ghost
+          // Cleanup ghost
+          deleteDoc(candidate.ref).catch(e => console.warn("Could not delete ghost", e));
           console.log(`Found ghost user ${data.userId}. Deleting...`);
           continue;
         }
+        
         validPartnerDoc = candidate;
         break;
       }
