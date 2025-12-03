@@ -108,9 +108,9 @@ export const useAnonymousChat = () => {
     if (status !== 'WAITING' || !userId) return;
 
     const handleMatch = (snapshot) => {
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        const convId = doc.id;
+      for (const convDoc of snapshot.docs) {
+        const data = convDoc.data();
+        const convId = convDoc.id;
         
         const isUserA = data.userAId === userId;
 
@@ -126,7 +126,12 @@ export const useAnonymousChat = () => {
         setPartnerId(partner);
         setStatus('CHATTING');
 
-        // 3. STOP looking. We found our match.
+        // 3. Remove self from waiting list
+        // In the case where we (re)join an existing conversation, we would still be in the waiting list because
+        // your partner created the conversation first. So we must ensure we delete ourselves from waiting list.
+        deleteDoc(doc(db, WAITING_PATH, userId)).catch(e => console.warn("Could not delete self from waiting list", e));
+
+        // 4. STOP looking. We found our match.
         return; 
       }
     };
@@ -139,8 +144,7 @@ export const useAnonymousChat = () => {
     return () => { unsub1(); unsub2(); };
   }, [status, userId]);
 
-  // --- Actions ---
-
+  // Joining a Chat, if failed, join waiting list
   const joinChat = async () => {
     if (!userId) return;
     setErrorMessage('');
@@ -247,7 +251,7 @@ export const useAnonymousChat = () => {
         const updateData = {
           [`userHasLeft${isUserA ? 'A' : 'B'}`]: true,
           messages: [...(data.messages||[]), { 
-            text: `SYSTEM: User has left the chat.`, 
+            text: `SYSTEM: User ${userId.substring(0, 8)}... has left the chat.`, 
             senderId: 'SYSTEM', 
             timestamp: new Date() 
           }]
